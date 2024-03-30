@@ -1,0 +1,4 @@
+*.pkl
+*.ttf
+.venv
+images
