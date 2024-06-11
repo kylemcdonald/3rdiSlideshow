@@ -72,11 +72,11 @@ def build_image_list():
 
 def get_dms_from_gps(dms, ref):
     """Formats DMS (degrees, minutes, seconds) GPS data for printing"""
-    degrees = dms[0]
-    minutes = dms[1]
-    seconds = dms[2]
+    degrees = int(dms[0])
+    minutes = int(dms[1])
+    seconds = int(dms[2])
     direction = ref
-    return f"{degrees} deg {minutes}' {seconds}\" {direction}"
+    return f"{degrees}° {minutes}' {seconds}\" {direction}"
 
 
 def get_gps_coordinates_in_dms(img_path):

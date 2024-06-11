@@ -172,27 +172,29 @@ try:
                     quantization,
                 ),
             )
+            
+        # draw clock
+        clock_str = cur_dt.strftime("%H:%M:%S")
+        text_with_bg(clock_font, clock_str, 10, 10, (8, 1))
 
+        # draw metadata
         time_str = original_dt.strftime("%Y-%m-%d %H:%M:%S")
         text = f"{time_str}\n"
         if latitude is None:
             latitude = "N/A"
             longitude = "N/A"
         text += f"Latitude: {latitude}\nLongitude: {longitude}"
-
         modified_dt = cur_dt.replace(second=0, microsecond=0)
         seconds_into_minute = (cur_dt - modified_dt).total_seconds()
-        text_count = int(min(len(text), seconds_into_minute * characters_per_second))
-        text = text[:text_count]
-
-        clock_str = cur_dt.strftime("%H:%M:%S")
-        text_with_bg(clock_font, clock_str, 10, 10, (8, 1))
-
-        x = 10
-        y = 70
-        for i, line in enumerate(text.split("\n")):
-            line_y = y + i * line_height
-            text_with_bg(main_font, line, x, line_y, (5, 1))
+        seconds_into_minute -= reveal_duration
+        if seconds_into_minute > 0:
+            text_count = int(min(len(text), seconds_into_minute * characters_per_second))
+            text = text[:text_count]
+            x = 10
+            y = 70
+            for i, line in enumerate(text.split("\n")):
+                line_y = y + i * line_height
+                text_with_bg(main_font, line, x, line_y, (5, 1))
 
         draw_second_hand_circle(
             (50, screen_height - 50), inner_radius=25, outer_radius=30
