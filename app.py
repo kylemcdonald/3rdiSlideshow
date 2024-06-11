@@ -173,7 +173,7 @@ try:
                 ),
             )
 
-        time_str = cur_dt.strftime("%Y-%m-%d")
+        time_str = cur_dt.strftime("%Y-%m-%d %H:%M:%S")
         text = f"{time_str}\n"
         if latitude is None:
             latitude = "N/A"
