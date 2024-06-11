@@ -2,3 +2,6 @@
 *.ttf
 .venv
 images
+*.pyc
+.*
+utils

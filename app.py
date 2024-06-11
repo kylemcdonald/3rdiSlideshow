@@ -1,112 +1,52 @@
 import os
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+
+from pygame import gfxdraw
+import numpy as np
 import pygame
 import sys
 import os
 import time
 import datetime
-import pickle
-from bisect import bisect_left
-from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
-
-def get_dms_from_gps(dms, ref):
-    """Formats DMS (degrees, minutes, seconds) GPS data for printing"""
-    degrees = dms[0]
-    minutes = dms[1]
-    seconds = dms[2]
-    direction = ref
-    return f"{degrees} deg {minutes}' {seconds}\" {direction}"
-
-def get_gps_coordinates_in_dms(img_path):
-    """Extracts GPS coordinates in DMS format from an image file."""
-    img = Image.open(img_path)
-    if hasattr(img, '_getexif'):
-        exif_data = img._getexif()
-        if exif_data is not None:
-            # Extract GPS data
-            gps_data = {}
-            for tag, value in exif_data.items():
-                decoded = TAGS.get(tag, tag)
-                if decoded == 'GPSInfo':
-                    for t in value:
-                        sub_decoded = GPSTAGS.get(t, t)
-                        gps_data[sub_decoded] = value[t]
-
-            # Retrieve latitude and longitude in DMS format
-            lat = lon = None
-            if 'GPSLatitude' in gps_data and 'GPSLatitudeRef' in gps_data:
-                lat_ref = gps_data['GPSLatitudeRef']
-                lat = get_dms_from_gps(gps_data['GPSLatitude'], lat_ref)
-            if 'GPSLongitude' in gps_data and 'GPSLongitudeRef' in gps_data:
-                lon_ref = gps_data['GPSLongitudeRef']
-                lon = get_dms_from_gps(gps_data['GPSLongitude'], lon_ref)
-
-            return lat, lon
-
-    return None, None
-
-
-def build_image_list():
-    images = []
-    for root, dirs, files in os.walk("images"):
-        for file in files:
-            image_path = os.path.join(root, file)
-            if not image_path.endswith('jpg'):
-                continue
-            date_str = image_path.split("/")[1]
-            time_str = image_path.split("/")[2].split(".")[0]
-            date_time_str = date_str + " " + time_str
-            date_time_obj = datetime.datetime.strptime(date_time_str, '%m-%d-%Y %H-%M-%S')
-            images.append((date_time_obj, image_path))
-    images.sort()
-    return images
-        
-def load_image_list():
-    cache_fn = "image_list.pkl"
-    if os.path.exists(cache_fn):
-        with open(cache_fn, "rb") as f:
-            return pickle.load(f)
-    else:
-        image_list = build_image_list()
-        with open(cache_fn, "wb") as f:
-            pickle.dump(image_list, f)
-        return image_list
-    
-def get_original_dt(dt):
-    mod_dt = dt
-    
-    # make leap days a repeat of the previous day
-    if mod_dt.month == 2 and mod_dt.day == 29:
-        mod_dt = mod_dt.replace(day=28)
-        
-    # replace year with 2011
-    mod_dt = mod_dt.replace(year=2011)
-    
-    # unless it's the end of the year, then we use 2010
-    if mod_dt.month == 12 and mod_dt.day >= 18:
-        mod_dt = mod_dt.replace(year=2010)
-    
-    return mod_dt
+from thirdi_utils import load_image_list, get_original_dt, get_gps_coordinates_in_dms, get_image_path
 
 pygame.init()
 pygame.mouse.set_visible(False)
-
 screen_info = pygame.display.Info()
-
 screen_width, screen_height = screen_info.current_w, screen_info.current_h
-screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+screen_width, screen_height = 1920//2, 1080//2
+screen = pygame.display.set_mode((screen_width, screen_height))#, pygame.FULLSCREEN)
+image = None
+image_list = load_image_list()
 
-def get_image_path(image_list, dt):
-    idx = bisect_left(image_list, (dt, "")) - 1
-    if idx < 0:
-        idx = 0
-    if idx >= len(image_list):
-        idx = len(image_list) - 1
-    return image_list[idx]
+def quit():
+    pygame.quit()
+    sys.exit()
+    
+main_font_size = 20
+main_font_name = "assets/FiraMono-Regular.ttf"
+main_font = pygame.font.Font(main_font_name, main_font_size)
 
-def load_image(image_path, cover=False):
+clock_font_size = 40
+clock_font_name = "assets/KodeMono-Regular.ttf"
+clock_font = pygame.font.Font(clock_font_name, clock_font_size)
+
+
+frame_rate = 30
+text_color = (255, 255, 255)
+text_bg_color = (0, 0, 0)
+characters_per_second = 30
+line_height = main_font_size * 1.3
+reveal_duration = 5
+quantization = 16
+
+last_dt = None
+latitude, longitude = None, None
+
+
+def load_image(image_path, cover=True):
+    print("loading", image_path)
     image = pygame.image.load(image_path)
     image_width, image_height = image.get_size()
     aspect_ratio = image_width / image_height
@@ -118,62 +58,144 @@ def load_image(image_path, cover=False):
         new_width = int(new_height * aspect_ratio)
     image = pygame.transform.smoothscale(image, (new_width, new_height))
     return image
-    
+
+
 def draw_image(image):
     image_width, image_height = image.get_size()
     x = (screen_width - image_width) // 2
     y = (screen_height - image_height) // 2
     screen.blit(image, (x, y))
 
-def quit():
-    pygame.quit()
-    sys.exit()
 
-last_image_path = None
-image = None
-image_list = load_image_list()
-font_size = 20
-line_height = font_size * 1.2
-font = pygame.font.Font("Roboto-Regular.ttf", font_size)
+def text_with_bg(font, text, x, y, padding):
+    text = font.render(text, True, text_color)
+    text_rect = text.get_rect()
+    text_rect.topleft = (x, y)
+    text_rect.width += 2 * padding[0]
+    text_rect.height += 2 * padding[1]
+    pygame.draw.rect(screen, text_bg_color, text_rect)
+    screen.blit(text, (x + padding[0], y + padding[1]))
+
+
+def draw_aa_circle(surface, center, radius, color):
+    x, y = center
+    gfxdraw.filled_circle(surface, x, y, radius, color)
+    gfxdraw.aacircle(surface, x, y, radius, color)
+
+
+def draw_filled_pie(
+    surface, center, radius, start_angle, end_angle, color, resolution=64
+):
+    points = []
+    x, y = center
+    angles = start_angle + np.linspace(0, 2 * np.pi, resolution)
+    range = end_angle - start_angle
+    n_angles = int(range / (2 * np.pi) * resolution)
+    angles = angles[:n_angles].tolist()
+    angles.extend([end_angle])
+    xs = x + radius * np.cos(angles)
+    ys = y + radius * np.sin(angles)
+    points = list(zip(xs, ys))
+    points.append(center)
+    if len(points) > 2:
+        gfxdraw.filled_polygon(surface, points, color)
+        gfxdraw.aapolygon(surface, points, color)
+
+
+def draw_second_hand_circle(
+    center,
+    inner_radius=25,
+    outer_radius=30,
+    inner_color=(0, 0, 0),
+    outer_color=(255, 255, 255),
+):
+    x, y = center
+    draw_aa_circle(screen, center, outer_radius, outer_color)
+    now = datetime.datetime.now()
+    seconds = now.second + now.microsecond / 1e6
+    pie_angle = 2 * np.pi * (seconds / 60)
+    pie_offset = -np.pi / 2
+    draw_filled_pie(
+        screen, center, inner_radius, pie_offset, pie_angle + pie_offset, inner_color
+    )
+
+
+start_time = time.time()
+frame_count = 1
 try:
     while True:
-        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 quit()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     quit()
-        
+
         cur_dt = datetime.datetime.now()
-        original_dt = get_original_dt(cur_dt)
-        image_dt, image_path = get_image_path(image_list, original_dt)
-        # print(cur_dt, original_dt, image_dt, image_path)
-        if image_path != last_image_path:
+        if last_dt is None or last_dt.minute != cur_dt.minute:
+            original_dt = get_original_dt(cur_dt)
+            image_dt, image_path = get_image_path(image_list, original_dt)
+            latitude, longitude = get_gps_coordinates_in_dms(image_path)
             image = load_image(image_path)
-            last_image_path = image_path
-        
-        # clear screen
+        if last_dt is not None and last_dt.second != cur_dt.second:
+            print(cur_dt)
+        last_dt = cur_dt
+
         screen.fill((0, 0, 0))
-        
-        # draw image
         draw_image(image)
-        
-        # draw cur_dt as text at top left, as YYYY-MM-DD HH:MM:SS
-        time_str = cur_dt.strftime("%Y-%m-%d %H:%M:%S")
-        # print(image_path)
-        latitude, longitude = get_gps_coordinates_in_dms(image_path)
+
+        columns = screen_width // quantization
+        total_steps = columns * (screen_height // quantization)
+        if cur_dt.second < reveal_duration:
+            seconds = cur_dt.second + cur_dt.microsecond / 1e6
+            steps = int(total_steps * (seconds / reveal_duration))
+            rect_top = quantization * (steps // columns)
+            pygame.draw.rect(
+                screen, (0, 0, 0), (0, rect_top, screen_width, screen_height - rect_top)
+            )
+            rect_left = quantization * (steps % columns)
+            pygame.draw.rect(
+                screen,
+                (0, 0, 0),
+                (
+                    rect_left,
+                    rect_top - quantization,
+                    screen_width - rect_left,
+                    quantization,
+                ),
+            )
+
+        time_str = cur_dt.strftime("%Y-%m-%d")
         text = f"{time_str}\n"
-        if latitude is not None:
-            text += f"Latitude: {latitude}\nLongitude: {longitude}"
+        if latitude is None:
+            latitude = "N/A"
+            longitude = "N/A"
+        text += f"Latitude: {latitude}\nLongitude: {longitude}"
+
+        modified_dt = cur_dt.replace(second=0, microsecond=0)
+        seconds_into_minute = (cur_dt - modified_dt).total_seconds()
+        text_count = int(min(len(text), seconds_into_minute * characters_per_second))
+        text = text[:text_count]
+
+        clock_str = cur_dt.strftime("%H:%M:%S")
+        text_with_bg(clock_font, clock_str, 10, 10, (8, 1))
+
         x = 10
-        y = 10
+        y = 70
         for i, line in enumerate(text.split("\n")):
-            text = font.render(line, True, (255, 255, 255))
-            screen.blit(text, (x, y + i * line_height))
-        
+            line_y = y + i * line_height
+            text_with_bg(main_font, line, x, line_y, (5, 1))
+
+        draw_second_hand_circle(
+            (50, screen_height - 50), inner_radius=25, outer_radius=30
+        )
+
         pygame.display.flip()
-        time.sleep(1)
-                
+        next_time = start_time + frame_count / frame_rate
+        sleep_time = next_time - time.time()
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        frame_count += 1
+
 except KeyboardInterrupt:
     pass
