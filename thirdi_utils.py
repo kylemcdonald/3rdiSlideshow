@@ -6,7 +6,11 @@ import pickle
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from bisect import bisect_left
-
+import turbojpeg
+import warnings
+import numpy as np
+from collections import defaultdict
+from utils.memoize import memoize
 
 def parallel(job, tasks):
     try:
@@ -15,7 +19,7 @@ def parallel(job, tasks):
     except KeyboardInterrupt:
         pass
 
-
+@memoize
 def build_image_list():
     images = []
     for root, dirs, files in os.walk("images"):
@@ -34,18 +38,6 @@ def build_image_list():
             images.append((date_time_obj, image_path))
     images.sort()
     return images
-
-
-def load_image_list():
-    cache_fn = "image_list.pkl"
-    if os.path.exists(cache_fn):
-        with open(cache_fn, "rb") as f:
-            return pickle.load(f)
-    else:
-        image_list = build_image_list()
-        with open(cache_fn, "wb") as f:
-            pickle.dump(image_list, f)
-        return image_list
 
 def get_dms_from_gps(dms, ref):
     """Formats DMS (degrees, minutes, seconds) GPS data for printing"""
@@ -101,10 +93,51 @@ def get_original_dt(dt):
 
     return mod_dt
 
-def get_image_path(image_list, dt):
-    idx = bisect_left(image_list, (dt, "")) - 1
-    if idx < 0:
-        idx = 0
-    if idx >= len(image_list):
-        idx = len(image_list) - 1
-    return image_list[idx]
+def get_image_path(by_time_of_day, dt):
+    time_of_day = f"{dt.hour:02d}:{dt.minute:02d}"
+    options = by_time_of_day[time_of_day]
+    month_and_day = int(f"{dt.month:02d}{dt.day:02d}")
+    idx = bisect_left(options, (month_and_day, dt, ""))
+    idx = min(idx, len(options) - 1)
+    _, timestamp, fn = options[idx]
+    return timestamp, fn
+
+def get_brightness(fn):
+    tj = turbojpeg.TurboJPEG()
+    warnings.filterwarnings("error")
+    try:
+        with open(fn, 'rb') as f:
+            img = tj.decode(f.read())
+        mean = np.median(img)
+        return mean
+    except:
+        return None
+
+@memoize
+def build_brightness_list():
+    image_list = build_image_list()
+    filenames = [e[1] for e in image_list]
+    brightness_list = parallel(get_brightness, filenames)
+    return brightness_list
+    
+@memoize
+def build_by_time_of_day():
+    threshold = 5
+    image_list = build_image_list()
+    brightness_list = build_brightness_list()
+    by_time_of_day = defaultdict(list)
+    for pair, brightness in zip(image_list, brightness_list):
+        if brightness is None:
+            # almost 60 images are "broken"
+            continue
+        if brightness < threshold:
+            continue
+        timestamp, fn = pair
+        time_of_day = f"{timestamp.hour:02d}:{timestamp.minute:02d}"
+        month_and_day = int(f"{timestamp.month:02d}{timestamp.day:02d}")
+        by_time_of_day[time_of_day].append((month_and_day, timestamp, fn))
+        
+    for k, v in by_time_of_day.items():
+        by_time_of_day[k] = sorted(v)
+        
+    return by_time_of_day

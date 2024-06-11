@@ -9,16 +9,24 @@ import sys
 import os
 import time
 import datetime
-from thirdi_utils import load_image_list, get_original_dt, get_gps_coordinates_in_dms, get_image_path
+from thirdi_utils import build_by_time_of_day, get_original_dt, get_gps_coordinates_in_dms, get_image_path
 
 pygame.init()
 pygame.mouse.set_visible(False)
 screen_info = pygame.display.Info()
-screen_width, screen_height = screen_info.current_w, screen_info.current_h
-screen_width, screen_height = 1920//2, 1080//2
-screen = pygame.display.set_mode((screen_width, screen_height))#, pygame.FULLSCREEN)
+
+fullscreen = True
+
+if fullscreen:
+    screen_width, screen_height = screen_info.current_w, screen_info.current_h
+    print(screen_width, 'x', screen_height)
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+else:
+    screen_width, screen_height = 1920//2, 1080//2
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    
 image = None
-image_list = load_image_list()
+by_time_of_day = build_by_time_of_day()
 
 def quit():
     pygame.quit()
@@ -134,11 +142,11 @@ try:
         cur_dt = datetime.datetime.now()
         if last_dt is None or last_dt.minute != cur_dt.minute:
             original_dt = get_original_dt(cur_dt)
-            image_dt, image_path = get_image_path(image_list, original_dt)
+            image_dt, image_path = get_image_path(by_time_of_day, original_dt)
             latitude, longitude = get_gps_coordinates_in_dms(image_path)
             image = load_image(image_path)
-        if last_dt is not None and last_dt.second != cur_dt.second:
-            print(cur_dt)
+        # if last_dt is not None and last_dt.second != cur_dt.second:
+        #     print(cur_dt)
         last_dt = cur_dt
 
         screen.fill((0, 0, 0))
