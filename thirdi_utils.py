@@ -2,7 +2,6 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import os
 import datetime
-import pickle
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from bisect import bisect_left
@@ -10,7 +9,37 @@ import turbojpeg
 import warnings
 import numpy as np
 from collections import defaultdict
-from utils.memoize import memoize
+import hashlib
+import pickle
+import inspect
+import os
+
+
+def memoize(func):
+    is_method = "self" in inspect.getfullargspec(func).args
+
+    def wrapper(*args, **kwargs):
+        fn = os.path.join("cache", func.__name__)
+        args_to_hash = ""
+        if len(args) > 0:
+            args_to_hash += str(args[1:] if is_method else args)
+        if len(kwargs) > 0:
+            args_to_hash += str(kwargs)
+        if len(args_to_hash) > 0:
+            fn += "_" + hashlib.md5(str(args_to_hash).encode()).hexdigest()
+        fn += ".pkl"
+        try:
+            os.makedirs("cache", exist_ok=True)
+            with open(fn, "rb") as f:
+                return pickle.load(f)
+        except FileNotFoundError:
+            result = func(*args, **kwargs)
+            with open(fn, "wb") as f:
+                pickle.dump(result, f)
+            return result
+
+    return wrapper
+
 
 def parallel(job, tasks):
     try:
@@ -18,6 +47,7 @@ def parallel(job, tasks):
         return results
     except KeyboardInterrupt:
         pass
+
 
 @memoize
 def build_image_list():
@@ -38,6 +68,7 @@ def build_image_list():
             images.append((date_time_obj, image_path))
     images.sort()
     return images
+
 
 def get_dms_from_gps(dms, ref):
     """Formats DMS (degrees, minutes, seconds) GPS data for printing"""
@@ -93,6 +124,7 @@ def get_original_dt(dt):
 
     return mod_dt
 
+
 def get_image_path(by_time_of_day, dt):
     time_of_day = f"{dt.hour:02d}:{dt.minute:02d}"
     options = by_time_of_day[time_of_day]
@@ -102,16 +134,18 @@ def get_image_path(by_time_of_day, dt):
     _, timestamp, fn = options[idx]
     return timestamp, fn
 
+
 def get_brightness(fn):
     tj = turbojpeg.TurboJPEG()
     warnings.filterwarnings("error")
     try:
-        with open(fn, 'rb') as f:
+        with open(fn, "rb") as f:
             img = tj.decode(f.read())
         mean = np.median(img)
         return mean
     except:
         return None
+
 
 @memoize
 def build_brightness_list():
@@ -119,7 +153,8 @@ def build_brightness_list():
     filenames = [e[1] for e in image_list]
     brightness_list = parallel(get_brightness, filenames)
     return brightness_list
-    
+
+
 @memoize
 def build_by_time_of_day():
     threshold = 5
@@ -136,8 +171,8 @@ def build_by_time_of_day():
         time_of_day = f"{timestamp.hour:02d}:{timestamp.minute:02d}"
         month_and_day = int(f"{timestamp.month:02d}{timestamp.day:02d}")
         by_time_of_day[time_of_day].append((month_and_day, timestamp, fn))
-        
+
     for k, v in by_time_of_day.items():
         by_time_of_day[k] = sorted(v)
-        
+
     return by_time_of_day
