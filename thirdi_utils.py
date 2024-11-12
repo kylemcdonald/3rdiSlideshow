@@ -176,3 +176,43 @@ def build_by_time_of_day():
         by_time_of_day[k] = sorted(v)
 
     return by_time_of_day
+
+
+def dms_to_decimal(degrees, minutes, seconds, direction):
+    """Convert DMS (degrees, minutes, seconds) to decimal format"""
+    decimal = float(degrees) + float(minutes)/60 + float(seconds)/3600
+    if direction in ['S', 'W']:
+        decimal = -decimal
+    return decimal
+
+
+def get_gps_coordinates_in_decimal(img_path):
+    """Extracts GPS coordinates in decimal format from an image file."""
+    img = Image.open(img_path)
+    if hasattr(img, "_getexif"):
+        exif_data = img._getexif()
+        if exif_data is not None:
+            # Extract GPS data
+            gps_data = {}
+            for tag, value in exif_data.items():
+                decoded = TAGS.get(tag, tag)
+                if decoded == "GPSInfo":
+                    for t in value:
+                        sub_decoded = GPSTAGS.get(t, t)
+                        gps_data[sub_decoded] = value[t]
+
+            # Retrieve latitude and longitude in decimal format
+            lat = lon = None
+            if "GPSLatitude" in gps_data and "GPSLatitudeRef" in gps_data:
+                lat_dms = gps_data["GPSLatitude"]
+                lat_ref = gps_data["GPSLatitudeRef"]
+                lat = dms_to_decimal(lat_dms[0], lat_dms[1], lat_dms[2], lat_ref)
+                
+            if "GPSLongitude" in gps_data and "GPSLongitudeRef" in gps_data:
+                lon_dms = gps_data["GPSLongitude"]
+                lon_ref = gps_data["GPSLongitudeRef"]
+                lon = dms_to_decimal(lon_dms[0], lon_dms[1], lon_dms[2], lon_ref)
+
+            return lat, lon
+
+    return None, None

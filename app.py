@@ -9,7 +9,7 @@ import sys
 import os
 import time
 import datetime
-from thirdi_utils import build_by_time_of_day, get_original_dt, get_gps_coordinates_in_dms, get_image_path
+from thirdi_utils import build_by_time_of_day, get_original_dt, get_gps_coordinates_in_decimal, get_image_path
 
 pygame.init()
 pygame.mouse.set_visible(False)
@@ -32,19 +32,14 @@ def quit():
     pygame.quit()
     sys.exit()
     
-main_font_size = 20
+main_font_size = screen_width // 30
 main_font_name = "assets/FiraMono-Regular.ttf"
 main_font = pygame.font.Font(main_font_name, main_font_size)
-
-clock_font_size = 40
-clock_font_name = "assets/KodeMono-Regular.ttf"
-clock_font = pygame.font.Font(clock_font_name, clock_font_size)
-
 
 frame_rate = 30
 text_color = (255, 255, 255)
 text_bg_color = (0, 0, 0)
-characters_per_second = 30
+characters_per_second = 1
 line_height = main_font_size * 1.3
 reveal_duration = 5
 quantization = 16
@@ -75,57 +70,23 @@ def draw_image(image):
     screen.blit(image, (x, y))
 
 
-def text_with_bg(font, text, x, y, padding):
+def text_with_bg(font, text, x, y, padding, alpha=128):
     text = font.render(text, True, text_color)
     text_rect = text.get_rect()
     text_rect.topleft = (x, y)
     text_rect.width += 2 * padding[0]
     text_rect.height += 2 * padding[1]
-    pygame.draw.rect(screen, text_bg_color, text_rect)
+    bg_surface = pygame.Surface((text_rect.width, text_rect.height), pygame.SRCALPHA)
+    bg_color = (*text_bg_color, alpha)
+    pygame.draw.rect(bg_surface, bg_color, bg_surface.get_rect())
+    screen.blit(bg_surface, text_rect)
     screen.blit(text, (x + padding[0], y + padding[1]))
-
-
-def draw_aa_circle(surface, center, radius, color):
-    x, y = center
-    gfxdraw.filled_circle(surface, x, y, radius, color)
-    gfxdraw.aacircle(surface, x, y, radius, color)
-
-
-def draw_filled_pie(
-    surface, center, radius, start_angle, end_angle, color, resolution=64
-):
-    points = []
-    x, y = center
-    angles = start_angle + np.linspace(0, 2 * np.pi, resolution)
-    range = end_angle - start_angle
-    n_angles = int(range / (2 * np.pi) * resolution)
-    angles = angles[:n_angles].tolist()
-    angles.extend([end_angle])
-    xs = x + radius * np.cos(angles)
-    ys = y + radius * np.sin(angles)
-    points = list(zip(xs, ys))
-    points.append(center)
-    if len(points) > 2:
-        gfxdraw.filled_polygon(surface, points, color)
-        gfxdraw.aapolygon(surface, points, color)
-
-
-def draw_second_hand_circle(
-    center,
-    inner_radius=25,
-    outer_radius=30,
-    inner_color=(0, 0, 0),
-    outer_color=(255, 255, 255),
-):
-    x, y = center
-    draw_aa_circle(screen, center, outer_radius, outer_color)
-    now = datetime.datetime.now()
-    seconds = now.second + now.microsecond / 1e6
-    pie_angle = 2 * np.pi * (seconds / 60)
-    pie_offset = -np.pi / 2
-    draw_filled_pie(
-        screen, center, inner_radius, pie_offset, pie_angle + pie_offset, inner_color
-    )
+    
+    # blinking cursor
+    if time.time() % 1 < 0.5:
+        cursor_x = x + text_rect.width - padding[0]
+        cursor_y = y + padding[1]
+        pygame.draw.line(screen, text_color, (cursor_x, cursor_y), (cursor_x, cursor_y + text_rect.height), 2)
 
 
 start_time = time.time()
@@ -143,7 +104,10 @@ try:
         if last_dt is None or last_dt.minute != cur_dt.minute:
             original_dt = get_original_dt(cur_dt)
             image_dt, image_path = get_image_path(by_time_of_day, original_dt)
-            latitude, longitude = get_gps_coordinates_in_dms(image_path)
+            latitude, longitude = get_gps_coordinates_in_decimal(image_path)
+            if latitude is not None:
+                latitude = f"{latitude:.5f}"
+                longitude = f"{longitude:.5f}"
             image = load_image(image_path)
         # if last_dt is not None and last_dt.second != cur_dt.second:
         #     print(cur_dt)
@@ -172,33 +136,24 @@ try:
                     quantization,
                 ),
             )
-            
-        # draw clock
-        clock_str = cur_dt.strftime("%H:%M:%S")
-        text_with_bg(clock_font, clock_str, 10, 10, (8, 1))
 
-        # draw metadata
-        time_str = original_dt.strftime("%Y-%m-%d %H:%M:%S")
-        text = f"{time_str}\n"
+        date_str = original_dt.strftime("%Y-%m-%d")
+        time_str = original_dt.strftime("%H:%M:%S")
         if latitude is None:
             latitude = "N/A"
             longitude = "N/A"
-        text += f"Latitude: {latitude}\nLongitude: {longitude}"
+        text = f"{date_str} lat: {latitude} long: {longitude} {time_str}"
+
         modified_dt = cur_dt.replace(second=0, microsecond=0)
         seconds_into_minute = (cur_dt - modified_dt).total_seconds()
-        seconds_into_minute -= reveal_duration
-        if seconds_into_minute > 0:
-            text_count = int(min(len(text), seconds_into_minute * characters_per_second))
-            text = text[:text_count]
-            x = 10
-            y = 70
-            for i, line in enumerate(text.split("\n")):
-                line_y = y + i * line_height
-                text_with_bg(main_font, line, x, line_y, (5, 1))
+        text_count = int(min(len(text), seconds_into_minute * characters_per_second))
+        text = text[:text_count]
 
-        draw_second_hand_circle(
-            (50, screen_height - 50), inner_radius=25, outer_radius=30
-        )
+        x = 10
+        y = screen_height - main_font_size * 1.5
+        for i, line in enumerate(text.split("\n")):
+            line_y = y + i * line_height
+            text_with_bg(main_font, line, x, line_y, (5, 1))
 
         pygame.display.flip()
         next_time = start_time + frame_count / frame_rate
