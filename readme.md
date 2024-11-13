@@ -20,3 +20,47 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ln -s ~/Documents/3rdiStream images
 ```
+
+## Setup permissions for systemctl
+
+```
+EDITOR=nano sudo visudo -f /etc/sudoers.d/systemctl-services
+```
+
+Then paste these lines:
+
+```
+ALL ALL=NOPASSWD: /bin/systemctl start slideshow
+ALL ALL=NOPASSWD: /bin/systemctl stop slideshow
+ALL ALL=NOPASSWD: /bin/systemctl restart slideshow
+```
+
+## Disable updates
+
+```
+sudo nano /etc/xdg/autostart/update-notifier.desktop
+```
+
+Change this value:
+
+```
+NoDisplay=true
+```
+
+```
+sudo nano /etc/apt/apt.conf.d/20auto-upgrades
+```
+
+Change these values:
+
+```
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+```
+
+```
+sudo systemctl stop apt-daily.timer
+sudo systemctl stop apt-daily-upgrade.timer
+sudo systemctl disable apt-daily.timer
+sudo systemctl disable apt-daily-upgrade.timer
+```
