@@ -156,7 +156,8 @@ try:
         y = screen_height - main_font_size * 1.5
         for i, line in enumerate(text.split("\n")):
             line_y = y + i * line_height
-            text_with_bg(main_font, line, x, line_y, (5, 1))
+            if seconds_into_minute > 0:
+                text_with_bg(main_font, line, x, line_y, (5, 1))
 
         pygame.display.flip()
         next_time = start_time + frame_count / frame_rate
