@@ -39,9 +39,11 @@ main_font = pygame.font.Font(main_font_name, main_font_size)
 frame_rate = 30
 text_color = (255, 255, 255)
 text_bg_color = (0, 0, 0)
-characters_per_second = 1
+total_characters = 49
+character_printing_duration = 45
+characters_per_second = total_characters / character_printing_duration
 line_height = main_font_size * 1.3
-reveal_duration = 5
+reveal_duration = 10
 quantization = 16
 
 last_dt = None
@@ -146,6 +148,7 @@ try:
 
         modified_dt = cur_dt.replace(second=0, microsecond=0)
         seconds_into_minute = (cur_dt - modified_dt).total_seconds()
+        seconds_into_minute = max(0, seconds_into_minute - reveal_duration)
         text_count = int(min(len(text), seconds_into_minute * characters_per_second))
         text = text[:text_count]
 
